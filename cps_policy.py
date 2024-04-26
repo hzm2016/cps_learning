@@ -54,7 +54,10 @@ class Dataset(object):
         
         state_info = np.hstack((self._context_buf[index], self._para_buf[index])) 
         reward_info = self._reward_buf[index]   
-        return state_info, reward_info       
+        return state_info, reward_info      
+
+    def sample_latest(self, batch_size):  
+        # index = 
 
     def save(self, save_dir, n_iter):  
         save_dir = save_dir + "/dataset"  
@@ -162,7 +165,7 @@ class CPS(object):
         self.num_space = cps_para['num_space']      
 
         self.task_var = None    
-        self.para_range = None   
+        self.para_range = None    
         self.context_range = cps_para['context_range']       
 
         #### real context ##### 
@@ -171,13 +174,13 @@ class CPS(object):
         # self.context_v = np.array([0.8, 1.0, 1.1, 1.2, 1.3, 1.4])    
         # self.context_s = np.array([-8, -4, -2, 0, 2, 4, 8])    
         self.speed_range, self.slop_range = np.array(self.context_range['speed']), np.array(self.context_range['slope'])  
-        print(self.speed_range, self.slop_range)   
+        # print(self.speed_range, self.slop_range)   
         self.speed_values, self.slop_values = self.generate_all()     
         
 
     def push_data(self, context_list=None, para_list=None, reward_list=None):     
         # reward_list = self.get_reward(context_list=context_list, para_list=-para_list)  
-    
+
         self.cps_dataset.add(context_list, para_list, reward_list)   
 
 
@@ -305,9 +308,11 @@ class CPS(object):
         return context_real     
     
 
-    def cal_reward(self, context, para):  
-        """ get reward  """  
-        reward = 0.0   
+    def cal_reward(self, evaluation_num=10):    
+        """ cal reward  """ 
+        avg_reward = 0.0 
+        std_reward = 0.0      
+
 
         return reward    
 
@@ -338,7 +343,8 @@ class CPS(object):
         
         if check_generated_imp(imp_total):  
             print("Save New Parameters in evaluation {}".format(self.iter_index))  
-            np.save(self.impedance_path + "/eval_{}.npy".format(self.iter_index), imp_total)       
+            np.save(self.impedance_path + "/impedance_{}.npy".format(self.iter_index), imp_total)      
+            np.save(self.impedance_path + "/context_{}.npy".format(self.iter_index), context_list)            
 
 
 
@@ -455,34 +461,36 @@ if __name__ == '__main__':
     #     print(state_action_pair.shape)    
 
     
-    policy_path = '/Users/zhimin/Desktop/2-code/HPS_Perception/hps_control/data/data420'   
-    for index in range(1, 10):   
-        path = policy_path + '/e' + str(index) + '/pair'  
-        state_list = glob.glob(path + '/state_*.npy') 
-        reward_list = glob.glob(path + '/reward_*.npy')    
-        data_state = []  
-        data_reward = []    
-        for state_path, reward_path in zip(state_list, reward_list):  
-            state_list = np.load(state_path)  
-            reward_list = np.load(reward_path)  
-            # print(state_list)  
-            # print(reward_list)   
-            data_state.append(state_list) 
-            data_reward.append(reward_list)   
+    # policy_path = '/Users/zhimin/Desktop/2-code/HPS_Perception/hps_control/data/data420'   
+    # for index in range(1, 10):   
+    #     path = policy_path + '/e' + str(index) + '/pair'  
+    #     state_list = glob.glob(path + '/state_*.npy') 
+    #     reward_list = glob.glob(path + '/reward_*.npy')    
+    #     data_state = []  
+    #     data_reward = []    
+    #     for state_path, reward_path in zip(state_list, reward_list):  
+    #         state_list = np.load(state_path)  
+    #         reward_list = np.load(reward_path)  
+    #         # print(state_list)  
+    #         # print(reward_list)   
+    #         data_state.append(state_list) 
+    #         data_reward.append(reward_list)   
 
-            cps_policy.push_data(context_list=state_list[:2], para_list=state_list[2:], reward_list=reward_list)    
+    #         cps_policy.push_data(context_list=state_list[:2], para_list=state_list[2:], reward_list=reward_list)    
         
-        # data_state = np.array(data_state)  
-        # data_reward = np.array(data_reward)  
-        # # print(data_state.shape, data_reward.shape) 
-        # cps_policy.push_data(context_list=data_state[:, :2], para_list=data_state[:, 2:4], reward_list=data_reward)   
+    #     # data_state = np.array(data_state)  
+    #     # data_reward = np.array(data_reward)  
+    #     # # print(data_state.shape, data_reward.shape) 
+    #     # cps_policy.push_data(context_list=data_state[:, :2], para_list=data_state[:, 2:4], reward_list=data_reward)   
 
-        # state_action_pair = np.load(policy_path + '/e' + str(index) + '/pair/' + 'state_' + str(state_index) + '.npy')     
-        # reward_pair = np.load(policy_path + '/e' + str(index) + '/pair/' + 'reward_' + str(state_index) + '.npy')   
+    #     # state_action_pair = np.load(policy_path + '/e' + str(index) + '/pair/' + 'state_' + str(state_index) + '.npy')     
+    #     # reward_pair = np.load(policy_path + '/e' + str(index) + '/pair/' + 'reward_' + str(state_index) + '.npy')   
 
-    print("size of dataset :", cps_policy.cps_dataset._size)       
+    # print("size of dataset :", cps_policy.cps_dataset._size)       
 
-    score = cps_policy.update_gp(training_num=80)  
-    print("score :", score)     
+    # score = cps_policy.update_gp(training_num=80)  
+    # print("score :", score)     
 
-    cps_policy.update_policy(training_num=80)  
+    # cps_policy.update_policy(training_num=80)  
+
+    # print(range(10)) 
