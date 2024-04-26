@@ -131,16 +131,17 @@ class Dataset(object):
 class CPS(object):     
     def __init__(self, context_dim=2, para_dim=2, policy_type='bo', epi=0.1, 
                  policy_path=None, impedance_path=None, 
-                 num_sim=2000, num_space=200, context_range=None):  
+                 num_sim=2000, num_real=10, num_space=200, context_range=None):  
           
         self.context_dim = context_dim   
         self.para_dim = para_dim  
         self.reward = 0.0   
-        self.policy = policy_type  
+        self.policy = policy_type    
         self.reps = None     
         self.cps_dataset = Dataset(self.context_dim, self.para_dim)    
 
         self.policy_path = policy_path    
+        self.impedance_path = impedance_path   
         
         # Gaussian process regressor with an RBF kernel    
         # kernel = RBF(length_scale=2.0)    
@@ -159,6 +160,7 @@ class CPS(object):
         self.iter_index = 0   
         self.beta = 1.0   
         self.num_sim = num_sim     
+        self.num_real = num_real  
         self.num_space = num_space  
 
         self.task_var = None    
@@ -241,7 +243,15 @@ class CPS(object):
         ########## update policy with artifical samples ##########  
         self.reps.update_policy(context_info_sim, para_info_sim, reward_info_sim)     
 
-        np.savez(self.policy_path + "/reps_policy_para_" + str(index) + ".npz", self.reps.a, self.reps.A, self.reps.sigma)   
+        #### save policy parameter ### 
+        np.savez(self.policy_path + "/reps_policy_para_" + str(index) + ".npz", self.reps.a, self.reps.A, self.reps.sigma)     
+
+        self.iter_index += 1  
+        #### generate new context ####
+        context_list = self.sample_real_context(give_seed=self.iter_index, num_real=self.num_real)    
+
+        #### generate new impeance ### 
+        self.save_impedance(context_list=context_list)    
 
 
     def update_gp(self, training_num=None):    
@@ -294,6 +304,7 @@ class CPS(object):
 
         return reward    
 
+
     def save_impedance(self, context_list=None):      
         # TODO 生成新的impedance
         total_num = args.ucb_sample_num 
@@ -316,21 +327,8 @@ class CPS(object):
         
         if check_generated_imp(imp_total):  
             print("Save New Parameters in evaluation {}".format(self.iter_index + 1))  
-            np.save("/home/yuxuan/Project/HPS_Perception/map_ws/src/HPS_Perception/hps_control/scripts/learning/eval_para/eval_{}.npy".format(args.iter_index + 1), imp_total)     
+            np.save(self.impedance_path + "/eval_para/eval_{}.npy".format(args.iter_index + 1), imp_total)    
 
-
-
-# def train_process():   
-
-#     ############ implementation by real robot ################   
-#     print("get real experimental data !!!")     
-#     reward_info_real= get_episode_data(args=args, tele_exp=tele_exp, ref_data=ref_data, data_name='epi_' + str(k),  
-#                 context_info=context_info_real, obs_info=obs_info_real, para_info=para_info_real, center_info=center_info_real, angle_info=angle_info_real
-#             )   
-#     reward_info_real = np.random.random((state_info_real.shape[0], 1))   
-
-
-#     pass     
 
 
 if __name__ == '__main__':     
