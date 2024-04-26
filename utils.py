@@ -2,6 +2,8 @@ import numpy as np
 import os
 from scipy.ndimage import gaussian_filter1d
 
+
+
 k0 = [[70., 50., 15., 12.], 
       [50., 50., 25., 20.]]
 

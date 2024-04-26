@@ -129,19 +129,15 @@ class Dataset(object):
     
 
 class CPS(object):     
-    def __init__(self, context_dim=2, para_dim=2, policy_type='bo', epi=0.1, 
-                 policy_path=None, impedance_path=None, 
-                 num_sim=2000, num_real=10, num_space=200, context_range=None):  
-          
-        self.context_dim = context_dim   
-        self.para_dim = para_dim  
-        self.reward = 0.0   
-        self.policy = policy_type    
+    def __init__(self, cps_para=None):      
+        self.context_dim = cps_para['context_dim']      
+        self.para_dim = cps_para['para_dim']    
+        self.policy = cps_para['policy_type']     
         self.reps = None     
         self.cps_dataset = Dataset(self.context_dim, self.para_dim)    
 
-        self.policy_path = policy_path    
-        self.impedance_path = impedance_path   
+        self.policy_path = cps_para['policy_path'] + '/subject_' + str(cps_para['subject_num']) + '/exp_num_' + str(cps_para['exp_num'])        
+        self.impedance_path = cps_para['impedance_path'] + '/subject_' + str(cps_para['subject_num']) + '/exp_num_' + str(cps_para['exp_num'])        
         
         # Gaussian process regressor with an RBF kernel    
         # kernel = RBF(length_scale=2.0)    
@@ -154,18 +150,20 @@ class CPS(object):
             para_dim=self.para_dim,       
             para_lower_bound=0.0,    
             para_upper_bound=1.0,     
-            eps=epi     
+            eps=cps_para['epi']       
         )   
 
-        self.iter_index = 0   
-        self.beta = 1.0   
-        self.num_sim = num_sim     
-        self.num_real = num_real  
-        self.num_space = num_space  
+        self.iter_index = 0    
+        self.reward = 0.0   
+        
+        self.beta = cps_para['beta']    
+        self.num_sim = cps_para['num_sim']       
+        self.num_real = cps_para['num_real']       
+        self.num_space = cps_para['num_space']      
 
         self.task_var = None    
-        self.para_range = None  
-        self.context_range = context_range   
+        self.para_range = None   
+        self.context_range = cps_para['context_range']       
 
         #### real context ##### 
         # speed_range=np.array([0.6, 0.8, 0.9, 1.0, 1.1, 1.2, 1.3, 1.4]),   
@@ -173,7 +171,8 @@ class CPS(object):
         # self.context_v = np.array([0.8, 1.0, 1.1, 1.2, 1.3, 1.4])    
         # self.context_s = np.array([-8, -4, -2, 0, 2, 4, 8])    
         self.speed_range, self.slop_range = np.array(self.context_range['speed']), np.array(self.context_range['slope'])  
-        self.speed_values, self.slop_values = self.generate_all()   
+        print(self.speed_range, self.slop_range)   
+        self.speed_values, self.slop_values = self.generate_all()     
         
 
     def push_data(self, context_list=None, para_list=None, reward_list=None):     
@@ -228,12 +227,14 @@ class CPS(object):
         self.reps.set_para(reps_obs_a, reps_obs_A, reps_obs_sigma)   
 
 
-    def update_policy(self, index=None, training_num=None):    
+    def update_policy(self, training_num=None):    
         state_list, reward_list = self.cps_dataset.sample_pairs(training_num)      
         self.gp_model.fit(state_list, reward_list)                 
-            
+        
+        self.iter_index += 1  
+
         ################ for traing with artificial samples ######    
-        context_info_sim = self.sample_sim_context(give_seed=index)     
+        context_info_sim = self.sample_sim_context(give_seed=self.iter_index)     
         para_info_sim = self.get_para(context_list=context_info_sim)          
         state_info_sim = np.hstack((context_info_sim, para_info_sim)).reshape(-1, self.context_dim + self.para_dim)   
  
@@ -243,31 +244,34 @@ class CPS(object):
         ########## update policy with artifical samples ##########  
         self.reps.update_policy(context_info_sim, para_info_sim, reward_info_sim)     
 
-        #### save policy parameter ### 
-        np.savez(self.policy_path + "/reps_policy_para_" + str(index) + ".npz", self.reps.a, self.reps.A, self.reps.sigma)     
+        save_policy_index_path = self.policy_path + '/eva_' + str(self.iter_index)     
+        if not os.path.exists(save_policy_index_path):           
+            os.makedirs(save_policy_index_path)      
 
-        self.iter_index += 1  
-        #### generate new context ####
-        context_list = self.sample_real_context(give_seed=self.iter_index, num_real=self.num_real)    
+        ################# save policy parameter ###################   
+        np.savez(save_policy_index_path + "/reps_policy_para_" + str(self.iter_index) + ".npz", self.reps.a, self.reps.A, self.reps.sigma)     
 
-        #### generate new impeance ### 
-        self.save_impedance(context_list=context_list)    
+        ################# generate new context  ###################
+        context_list = self.sample_real_context(give_seed=self.iter_index, num_real=self.num_real)       
+
+        ################ generate new impeance ####################  
+        self.save_impedance(context_list=context_list)      
 
 
     def update_gp(self, training_num=None):    
         state_list, reward_list = self.cps_dataset.sample_pairs(training_num)      
         self.gp_model.fit(state_list, reward_list)    
 
-        return self.gp_model.score(state_list, reward_list)     
+        return self.gp_model.score(state_list, reward_list)      
         
     
-    def generate_all(self, ): 
+    def generate_all(self, ):    
         speed_space_value = np.linspace(np.min(self.speed_range), np.max(self.speed_range), self.num_space)   
         slop_space_value = np.linspace(np.min(self.slop_range), np.max(self.slop_range), self.num_space) 
 
-        speed_values, slop_values = np.meshgrid(speed_space_value, slop_space_value)    
-
-        return speed_values, slop_values  
+        speed_values, slop_values = np.meshgrid(speed_space_value, slop_space_value)          
+        speed_values, slop_values = speed_values.flatten(), slop_values.flatten()     
+        return speed_values, slop_values     
 
 
     def sample_sim_context(self, give_seed=None):      
@@ -275,27 +279,30 @@ class CPS(object):
             np.random.seed(give_seed)    
         
         context_sim = np.random.random(size=(self.num_sim, self.context_dim))    
-        # if self.num_sim < self.num_space * self.num_space:  
-        sim_index = np.random.randint(0, V.shape[0], size=(self.num_sim,))  
-        context_sim[:, 0] = self.speed_values[sim_index]  
-        context_sim[:, 1] = self.slop_values[sim_index]
+        sim_index = np.random.randint(0, self.num_space * self.num_space, size=(self.num_sim,))  
+        context_sim[:, 0] = self.speed_values[sim_index]   
+        context_sim[:, 1] = self.slop_values[sim_index]   
         return context_sim   
     
 
-    def sample_real_context(self, give_seed=None, num_real=1):        
+    def sample_real_context(self, give_seed=None, num_real=None):            
         if give_seed is not None: 
             np.random.seed(give_seed)    
         
+        ################### random #####################
         context_real = np.zeros((num_real, self.context_dim))     
-
         V, S = np.meshgrid(self.speed_range, self.slop_range)
         V, S = V.flatten(), S.flatten()  
 
-        idx_chosen = np.random.randint(0, V.shape[0], size=(num_real,))
-        
-        context_real[:, 0] = self.speed_range[idx_chosen]  
-        context_real[:, 1] = self.slop_range[idx_chosen]       
-        return context_real    
+        idx_chosen = np.random.randint(0, V.shape[0], size=(num_real,))   
+        # print(idx_chosen)  
+        context_real[:, 0] = V[idx_chosen]  
+        context_real[:, 1] = S[idx_chosen]   
+
+        ################## real ########################  
+        real_index_slope = [0, 2, 4, 6, 8, -2, -4, -6, -8]    
+        context_real[:, 1] = real_index_slope[self.iter_index]     
+        return context_real     
     
 
     def cal_reward(self, context, para):  
@@ -307,10 +314,10 @@ class CPS(object):
 
     def save_impedance(self, context_list=None):      
         # TODO 生成新的impedance
-        total_num = args.ucb_sample_num 
+        context_num = context_list.shape[0]   
         idx_knee = 0
         idx_ankle = 1  
-        imp_total = np.zeros((total_num, 24))      
+        imp_total = np.zeros((context_num, 24))         
 
         para_list = self.get_para(context_list=context_list)     
 
@@ -324,10 +331,14 @@ class CPS(object):
         imp_total[:,16:] = np.array(q_e0[idx_knee]+q_e0[idx_ankle])
         imp_total[:, 1] = new_kp1[:]
         imp_total[:, 2] = new_kp2[:]    
+
+        save_impedance_path = self.impedance_path + '/eva_' + str(self.iter_index)     
+        if not os.path.exists(save_impedance_path):           
+            os.makedirs(save_impedance_path)         
         
         if check_generated_imp(imp_total):  
-            print("Save New Parameters in evaluation {}".format(self.iter_index + 1))  
-            np.save(self.impedance_path + "/eval_para/eval_{}.npy".format(args.iter_index + 1), imp_total)    
+            print("Save New Parameters in evaluation {}".format(self.iter_index))  
+            np.save(self.impedance_path + "/eval_{}.npy".format(self.iter_index), imp_total)       
 
 
 
@@ -413,12 +424,30 @@ if __name__ == '__main__':
     parser.add_argument("--reps_para_path", type=str, default="/media/yuxuan/BackUp/HPS_Data/Debug_REPS/")
     
     args = parser.parse_args()    
-    policy_path = current_dir + '/policy_para'  
-    context_range = {'speed': [0.8, 1.0, 1.1, 1.2, 1.3, 1.4], 'slope' : [-8, -4, -2, 0, 2, 4, 8]}   
+    policy_path = current_dir + '/policy_para'    
 
-    cps_policy = CPS(context_dim=args.context_dim, para_dim=args.para_dim, policy_type='reps', epi=0.1, 
-                     policy_path=policy_path, num_sim=2000, num_space=200, context_range=context_range
-                     )  
+
+    cps_para = {
+        'context_dim': 2, 
+        'para_dim': 2, 
+        'policy_type': 'reps', 
+        'epi' : 0.1, 
+        'beta' : 1.0, 
+        'num_sim' : 2000,  
+        'num_real' : 10,  
+        'num_space' : 200,  
+        'policy_path': '/Users/zhimin/Desktop/2-code/HPS_Perception/hps_control/scripts/cps_learning/policy_para',  
+        'impedance_path': '/Users/zhimin/Desktop/2-code/HPS_Perception/hps_control/scripts/cps_learning/impedance_para',   
+        'subject_num': 0,  
+        'exp_num': 0, 
+        'context_range': {'speed': [0.8, 1.0, 1.1, 1.2, 1.3, 1.4], 'slope' : [-8, -4, -2, 0, 2, 4, 8]}   
+    }
+    context_range = {'speed': [0.8, 1.0, 1.1, 1.2, 1.3, 1.4], 'slope' : [-8, -4, -2, 0, 2, 4, 8]}     
+
+    cps_policy = CPS(cps_para=cps_para)    
+
+    # context_dim=args.context_dim, para_dim=args.para_dim, policy_type='reps', epi=0.1, 
+    # policy_path=policy_path, num_sim=2000, num_space=200, context_range=context_range  
     
     # policy_path = '/Users/zhimin/Desktop/2-code/HPS_Perception/hps_control/data/state_info_real420'  
     # for index in range(1, 10):   
@@ -431,8 +460,8 @@ if __name__ == '__main__':
         path = policy_path + '/e' + str(index) + '/pair'  
         state_list = glob.glob(path + '/state_*.npy') 
         reward_list = glob.glob(path + '/reward_*.npy')    
-        data_state = [] 
-        data_reward = []  
+        data_state = []  
+        data_reward = []    
         for state_path, reward_path in zip(state_list, reward_list):  
             state_list = np.load(state_path)  
             reward_list = np.load(reward_path)  
@@ -455,3 +484,5 @@ if __name__ == '__main__':
 
     score = cps_policy.update_gp(training_num=80)  
     print("score :", score)     
+
+    cps_policy.update_policy(training_num=80)  
