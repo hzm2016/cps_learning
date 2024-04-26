@@ -1,0 +1,3 @@
+int64  label  # Task instance label (success=1, infeasible=0)
+---
+bool   success

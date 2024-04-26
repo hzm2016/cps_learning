@@ -1,0 +1,17 @@
+<?xml version="1.0"?>
+<launch>
+
+  <arg name="config_path"     default="$(find ll4ma_policy_learning)/config"/>
+  <arg name="config_filename" default="experiment_1.yaml"/>
+  <arg name="experiment_type" default="experiment_1"/>
+
+  <!-- ======================================================================================= -->
+ 
+  <node name="table_visualizer" pkg="ll4ma_policy_learning" type="table_visualizer.py"
+        respawn="false" output="screen">
+    <param name="config_path" value="$(arg config_path)"/>
+    <param name="config_filename" value="$(arg config_filename)"/>
+    <param name="experiment_type" value="$(arg experiment_type)"/>
+  </node>
+
+</launch>

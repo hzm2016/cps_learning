@@ -1,0 +1,4 @@
+*.pyc
+notebooks/.ipynb_checkpoints/*
+test/ll4ma_movement_primitives/promps/*.png
+*.svg

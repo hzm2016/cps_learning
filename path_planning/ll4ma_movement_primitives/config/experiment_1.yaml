@@ -1,0 +1,24 @@
+lbr4_base_link__to__table_1_center:
+  orientation:
+    w: 0.0039462515853830454
+    x: 0.01197681263000226
+    y: -0.009035611835328876
+    z: -0.9998796631477269
+  position:
+    x: -0.7755385828678747
+    y: 0.006911945562385724
+    z: 0.16056578302424607
+num_thetas: 8
+num_xs: 8
+num_ys: 11
+table_type: Small (24in X 18in)
+table_x: 0.455
+table_y: 0.61
+table_z: 0.75
+theta_max: 3.14159265359
+theta_min: -3.14159265359
+x_max: 0.2
+x_min: -0.2
+y_max: 0.275
+y_min: -0.275
+z: 0

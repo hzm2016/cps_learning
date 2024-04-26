@@ -1,0 +1,6 @@
+float64[]       w           # Weight vector learned from demonstration
+ProMPConfigROS  config      # Configuration for when a new ProMP is being created from one demo
+string          executed_promp_name  # Name of ProMP used to execute (if demo not given)
+string          data_name   # Name associated with data ProMP is learned from
+---
+bool success

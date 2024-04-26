@@ -1,0 +1,17 @@
+<?xml version="1.0"?>
+<launch>
+
+  <arg name="demo_path" default="~/.rosbags/demos"/>
+  <arg name="num_bfs"   default="6"/>
+    
+  <!-- ======================================================================================= -->
+
+  <node name="joy" pkg="joy" type="joy_node"/>
+  
+  <node name="joy_demo_interface" pkg="ll4ma_policy_learning" type="joy_demo_interface.py"
+	respawn="false" output="screen">
+    <param name="demo_path" value="$(arg demo_path)"/>
+    <param name="num_bfs"   value="$(arg num_bfs)"/>
+  </node>
+  
+</launch>

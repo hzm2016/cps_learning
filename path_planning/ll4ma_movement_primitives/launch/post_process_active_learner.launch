@@ -1,0 +1,41 @@
+<?xml version="1.0"?>
+<launch>
+
+  <arg name="learner_index"         default="100"/>
+  <!-- <arg name="data_abs_path"         default="/media/adam/URLG_HDD/adam"/> -->
+  <arg name="data_abs_path" default="/media/adam/data_haro/rss_2019"/>
+  <arg name="experiment"            default="experiment_2"/>
+  <arg name="trial"                 default="trial_1"/>
+  <arg name="active_learning_type"  default="random"/>
+  <arg name="data_rel_path"         default="$(arg experiment)__$(arg active_learning_type)__$(arg trial)"/>
+  
+  <arg name="config_filename"       value="$(arg experiment).yaml"/>
+
+  <arg name="load_pandas_interface" default="false"/>
+  <arg name="load_promp_learner" default="false"/>
+
+  <arg name="num_bfs" default="6"/>
+  <arg name="regr_alpha" default="0.5"/>
+
+  <!-- ===================================================================== -->
+
+  <node name="post_processor" pkg="ll4ma_policy_learning" type="post_process_active_learner.py"
+        respawn="false" output="screen">
+    <param name="data_abs_path" value="$(arg data_abs_path)"/>
+    <param name="data_rel_path" value="$(arg data_rel_path)"/>
+    <param name="learner_index" value="$(arg learner_index)"/>
+    <param name="num_bfs"       value="$(arg num_bfs)"/>
+    <param name="regr_alpha"    value="$(arg regr_alpha)"/>
+  </node>
+
+  <!-- Data interface (pandas) -->
+  <include if="$(arg load_pandas_interface)" file="$(find ll4ma_logger)/launch/pandas_interface.launch">
+    <arg name="data_abs_path" value="$(arg data_abs_path)"/>
+    <arg name="data_rel_path" value="$(arg data_rel_path)"/>
+  </include>
+  
+  <!-- ProMP policy learner -->
+  <node if="$(arg load_promp_learner)" name="promp_learner" pkg="ll4ma_policy_learning" type="policy_learner.py" 
+        respawn="false" output="screen"/>
+
+</launch>

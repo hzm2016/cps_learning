@@ -1,0 +1,15 @@
+string                                 active_learning_type
+geometry_msgs/Pose                     table_pose   # Pose of table in base frame
+ll4ma_movement_primitives/PlanarPose   lower_bound  # Lower bound on planar pose
+ll4ma_movement_primitives/PlanarPose   upper_bound  # Upper bound on planar pose
+ll4ma_movement_primitives/Mixture      obj_gmm
+ll4ma_movement_primitives/Mixture      ee_gmm
+ll4ma_movement_primitives/Mixture      promps
+ll4ma_movement_primitives/Array        phi
+ll4ma_movement_primitives/PlanarPose[] init_guesses # Initial guesses for optimization
+---
+ll4ma_movement_primitives/PlanarPose[] selected_instances
+float64                            entropy
+float64                            least_confident
+float64                            min_margin
+bool                               success

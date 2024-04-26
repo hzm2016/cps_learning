@@ -1,0 +1,8 @@
+string   path           # path to load files from
+string   filename       # stores list of demo names to run batch executions out of simulator session
+string[] demo_names     # list of demo names for execution in simulator session
+string   policy_type    # type of policy to run [dmp, promp]
+int64    num_executions # number of policy executions to perform
+bool     is_joint_space # run as joint space true, task space otherwise
+---
+bool success            # true if execution session was successful, false otherwise

@@ -1,0 +1,15 @@
+string[]   state_types 
+TwoDArray  dimensions
+int64      num_bfs
+float64    dt
+string[]   w_keys
+float64[]  mu_w_mle
+TwoDArray  sigma_w_mle
+TwoDArray  sigma_w_prior
+float64    regr_alpha
+float64    inv_wish_factor
+float64    dist_threshold
+float64    num_demos
+string     name
+float64[]  init_joint_state
+float64    fixed_mahalanobis_threshold

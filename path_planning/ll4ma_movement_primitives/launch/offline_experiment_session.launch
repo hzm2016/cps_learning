@@ -1,0 +1,74 @@
+<?xml version="1.0"?>
+<launch>
+
+  <arg name="data_abs_path"   default="/media/adam/data_haro/rss_2019"/>
+  <arg name="experiment"      default="experiment_1"/>
+  <arg name="data_rel_path"   default="$(arg experiment)__grid_data/trajectory_data"/>
+  <arg name="base_frame"      default="lbr4_base_link"/>
+  <arg name="rate"            default="100"/>
+  <arg name="config_path"     default="$(find ll4ma_policy_learning)/config"/>
+  <arg name="config_filename" value="$(arg experiment).yaml"/>
+
+  <arg name="use_pandas" default="false"/>
+  <arg name="use_rviz"   default="false"/>
+  
+  <!-- ===================================================================== -->
+
+  <!-- Data interface (pandas) -->
+  <include if="$(arg use_pandas)" file="$(find ll4ma_logger)/launch/pandas_interface.launch">
+    <arg name="data_abs_path" value="$(arg data_abs_path)"/>
+    <arg name="data_rel_path" value="$(arg data_rel_path)"/>
+  </include>
+  
+  <!-- ProMP policy learner -->
+  <node name="promp_learner" pkg="ll4ma_policy_learning" type="policy_learner.py" 
+        respawn="false" output="screen"/>
+
+  <!-- rViz -->
+  <node if="$(arg use_rviz)" name="rviz" pkg="rviz" type="rviz" 
+        args="-d $(find ll4ma_logger)/config/review.rviz"/>
+
+  <!-- ProMP sample visualization -->
+  <node if="$(arg use_rviz)" name="promp_visualizer" pkg="ll4ma_policy_learning"
+	type="promp_visualizer.py" respawn="false" output="screen">
+      <param name="base_frame" value="$(arg base_frame)"/>
+  </node>
+
+  <!-- Joint trajectory visualization (rViz rendered model) -->
+  <include if="$(arg use_rviz)"
+	   file="$(find ll4ma_trajectory_util)/launch/joint_trajectory_visualizer.launch">
+    <arg name="rate" value="$(arg rate)"/>
+  </include>
+
+  <!-- Table visualzation -->
+  <node if="$(arg use_rviz)" name="table_visualizer" pkg="ll4ma_policy_learning"
+	type="table_visualizer.py" respawn="false" output="screen">
+    <param name="config_path" value="$(arg config_path)"/>
+    <param name="config_filename" value="$(arg config_filename)"/>
+    <param name="experiment_type" value="$(arg experiment)"/>
+  </node>
+
+  <!-- Trajectory smoother (for joint trajectory executions) -->
+  <node if="$(arg use_rviz)" name="trajectory_smoothing" pkg="trajectory_smoothing" type="service" 
+        output="screen"/>
+
+  <param name="robot_description" 
+      command="$(find xacro)/xacro '$(find ll4ma_robots_description)/robots/lbr4.robot.xacro' 
+               gazebo:=false 
+               robot_table:=false 
+               robot_name:=lbr4 
+               end_effector:=reflex
+		           --inorder"/>
+  <node if="$(arg use_rviz)" name="robot_state_publisher" pkg="robot_state_publisher"
+	type="robot_state_publisher">
+    <remap from="/joint_states" to="/lbr4/joint_states"/>
+  </node>
+  <node pkg="joint_state_publisher" type="joint_state_publisher" output="screen" 
+        if="$(arg use_rviz)" name="joint_state_publisher">
+    <param name="publish_default_velocities" value="true"/>
+    <param name="publish_default_efforts" value="true"/>
+    <param name="rate" value="100"/>
+    <remap from="/joint_states" to="/lbr4/joint_states"/>
+  </node>
+
+</launch>

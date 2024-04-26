@@ -1,0 +1,8 @@
+# goal
+DMPConfigROS[] dmp_configs
+---
+# result
+bool success # TODO change as needed
+---
+# feedback
+bool status  # TODO change as needed 

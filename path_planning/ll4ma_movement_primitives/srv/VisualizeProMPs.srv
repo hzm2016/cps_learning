@@ -1,0 +1,9 @@
+ProMPConfigROS promp_config
+WaypointROS[]  waypoints
+int64          num_samples
+float64        duration
+float64        dt
+string         color_name
+bool           clear  # Clear all existing samples
+---
+bool           success

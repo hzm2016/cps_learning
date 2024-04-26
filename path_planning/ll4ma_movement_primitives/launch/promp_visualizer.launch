@@ -1,0 +1,55 @@
+<?xml version="1.0"?>
+<launch>
+
+  <arg name="robot_name" default="lbr4"/>
+  
+  <!-- ======================================================================================= -->
+
+  <!-- Load robot description to parameter server -->
+  <param name="/robot_description" command="
+         $(find xacro)/xacro '$(find ll4ma_robots_description)/robots/lbr4.robot.xacro'
+	 ft_sensor:=false
+	 end_effector:=reflex
+	 robot_table:=true
+	 object_high_table:=true
+	 gazebo:=false
+         --inorder"/>
+
+  <!-- Load other parameters to the ROS param server -->
+  <group ns="$(arg robot_name)">
+    <rosparam param="root_links">[lbr4_0_link]</rosparam>
+    <rosparam param="tip_links">[pad]</rosparam> <!-- on reflex -->
+  </group>
+
+  <!-- Robot state publisher -->
+  <node name="robot_state_publisher" pkg="robot_state_publisher" type="robot_state_publisher"/>
+
+  <!-- Joint state publisher -->
+  <node name="joint_state_publisher" pkg="joint_state_publisher" type="joint_state_publisher">
+    <rosparam param="source_list">["/joint_cmd"]</rosparam>
+    <!-- <param name="publish_default_velocities" value="true"/> -->
+    <!-- <param name="publish_default_efforts"    value="true"/> -->
+  </node>
+
+  <!-- rViz -->
+  <node name="rviz" pkg="rviz" type="rviz"
+	args="-d $(find ll4ma_trajectory_util)/config/lbr4_object_table.rviz"/>
+
+  <!-- LL4MA KDL services -->
+  <node name="ll4ma_kdl_services" pkg="ll4ma_kdl" type="robot_kdl_node"
+	respawn="false" output="screen" args="$(arg robot_name)"/>
+
+  <!-- ProMP visualization node -->
+  <node name="promp_visualizer" pkg="ll4ma_policy_learning" type="promp_visualizer.py"
+	respawn="false" output="screen"/>
+
+  <!-- ProMP policy learner -->
+  <node name="promp_learner" pkg="ll4ma_policy_learning" type="policy_learner.py"
+	respawn="false" output="screen"/>
+
+  
+  <!-- Trajectory visualization node -->
+  <node name="multi_trajectory_visualizer" pkg="ll4ma_trajectory_util"
+  	type="multi_trajectory_visualizer.py" respawn="false" output="screen"/>
+
+</launch>

@@ -1,0 +1,80 @@
+<?xml version="1.0"?>
+<launch>
+
+  <arg name="demo_filename"     default="demos"                          doc=""/>
+  <arg name="log_filename"      default="log"                            doc=""/>
+  <arg name="data_path"         default=".ros/ll4ma_logger"              doc="Relative to $HOME"/>
+  <arg name="robot_name"        default="lbr4"                           doc=""/>  
+  <arg name="robot_state_topic" default="/$(arg robot_name)/robot_state" doc=""/>
+  <arg name="num_joints"        default="7"/> <!-- TODO temporary, set from a different node -->
+  <arg name="log_rate"          default="50"/> <!-- TODO current KUKA output rate -->
+
+  <!-- ========================================================================================== -->
+
+  <!-- Demonstration GUI -->
+  <node name="demonstration_gui" pkg="ll4ma_logger" type="recorder_gui.py"
+	respawn="false" output="screen"/>
+
+  <!-- rViz -->
+  <node name="rviz" pkg="rviz" type="rviz" respawn="false" output="screen"
+  	args="-d $(find ll4ma_logger)/config/review.rviz"/>
+
+  <!-- Relay node that aggregates state quantities and publish to single robot state topic -->
+  <node name="$(arg robot_name)_state_relay" pkg="ll4ma_logger" type="robot_state_relay.py"
+	respawn="false" output="screen"/>
+
+  <!-- Joint trajectory action server -->
+  <node name="joint_trajectory_action_server" pkg="ll4ma_trajectory_util"
+  	type="joint_trajectory_action_server.py" respawn="false" output="screen" args="lbr4"/>
+
+  <!-- rosbag recorder -->
+  <node name="rosbag_recorder" pkg="ll4ma_logger" type="rosbag_recorder.py"
+	respawn="false" output="screen"/>
+
+  <!-- Trajectory smoother -->
+  <node name="trajectory_smoothing" pkg="trajectory_smoothing" type="service" output="screen"/>
+
+  <!-- ReFlex interface for grasping -->
+  <node name="reflex_grasp_interface" pkg="ll4ma_robot_interface" type="reflex_grasp.py"
+	output="screen" respawn="false"/>
+
+  <!-- TF pose transformer for relaying poses to topics -->
+  <node name="tf_pose_relay" pkg="ll4ma_logger" type="tf_relay.py" respawn="false" output="screen"/>
+
+  
+
+  <!-- === VIRTUAL ROBOT ===================================================================== -->
+  
+  <!-- Load robot description for rendering review playback of trajectory -->
+  <param name="virtual_$(arg robot_name)/robot_description" command="
+  	       $(find xacro)/xacro '$(find ll4ma_robots_description)/robots/lbr4.robot.xacro'
+  	       robot_table:=true
+               gazebo:=false
+  	       robot_name:='virtual_$(arg robot_name)'
+	       object_low_table:=true
+               --inorder"/>
+
+  <!-- Robot state publisher for rendering virtual robot in rViz -->
+  <node name="virtual_robot_state_publisher" pkg="robot_state_publisher" type="robot_state_publisher">
+    <param name="publish_frequency" value="100"/>
+    <param name="tf_prefix"         value="virtual_lbr4"/>
+    <remap from="joint_states"      to="/virtual_$(arg robot_name)/joint_states"/>
+    <remap from="robot_description" to="/virtual_$(arg robot_name)/robot_description"/>
+  </node>
+  
+  <!-- Joint state publisher for virtual robot -->
+  <node name="virtual_joint_state_publisher" pkg="joint_state_publisher" type="joint_state_publisher"
+  	output="screen" respawn="false">
+    <rosparam param="source_list">["/virtual_lbr4/virtual_joint_cmd"]</rosparam>
+    <param name="publish_default_velocities" value="true"/>
+    <param name="publish_default_efforts"    value="true"/>
+    <param name="rate"                       value="100"/>
+    <remap from="joint_states"      to="/virtual_$(arg robot_name)/joint_states"/>
+    <remap from="robot_description" to="/virtual_$(arg robot_name)/robot_description"/>
+  </node>
+
+  <!-- Static world transform so we can display both real and virtual robots simultaneously -->
+  <node pkg="tf" type="static_transform_publisher" name="virtual_to_world_tf"
+	args="0 0 0 0 0 0 1 world virtual_$(arg robot_name)/world 100" />
+
+</launch>

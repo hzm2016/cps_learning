@@ -1,0 +1,9 @@
+# TODO this assumes that it is in the x-y plane of the frame
+
+geometry_msgs/Pose pose
+float64 max_x
+float64 min_x
+float64 max_y
+float64 min_y
+---
+bool           success

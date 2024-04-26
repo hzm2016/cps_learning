@@ -1,0 +1,11 @@
+# Goal
+ProMPConfigROS[] promp_configs
+int64 num_executions
+geometry_msgs/Pose[] goal_poses
+bool is_joint_space
+---
+# Result
+bool success # TODO change as needed
+---
+# Feedback
+bool status  # TODO change as needed 

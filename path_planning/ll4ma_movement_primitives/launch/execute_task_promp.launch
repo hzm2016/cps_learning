@@ -1,0 +1,234 @@
+<?xml version="1.0"?>
+<launch>
+
+  <arg name="robot_name"            default="lbr4"/>
+  <arg name="data_abs_path"         default="/media/adam/URLG_HDD/adam"/>
+  <arg name="offline_mode"          default="false"/>
+  <arg name="use_reflex"            default="true"/>
+  <arg name="use_object"            default="true"/>
+  <arg name="use_gui"               default="true"/>
+  <arg name="use_camera"            default="true"/>
+  <arg name="use_joystick"          default="true"/>
+  
+  <arg name="num_bfs"               default="6"/>
+  <arg name="rate"                  default="100"/>
+  <arg name="position_tolerance"    default="0.008"/>
+  <arg name="orientation_tolerance" default="0.06"/>
+  <arg name="joint_tolerance"       default="0.015"/>
+  <arg name="timeout"               default="20.0"/>
+  <arg name="base_frame"            default="lbr4_base_link"/>
+  <arg name="end_effector_frame"    default="pad"/>
+  <arg name="object_frame"          default="object_mesh"/>
+  <arg name="use_table_1"           default="true"/> <!-- Small table -->
+  <arg name="use_table_2"           default="false"/> <!-- Mid table -->
+  <arg name="use_table_3"           default="false"/> <!-- Bookshelf Top -->
+  <arg name="use_transfer_cov"      default="false"/>
+  <arg name="use_promp_merging"     default="false"/>
+  <arg name="use_pandas"            default="true"/>
+  <arg name="use_ll4ma_planner"     default="false"/>
+
+  <arg name="experiment"            default="experiment_1"/>
+  <arg name="trial"                 default="trial_1"/>
+  <arg name="active_learning_type"  default="validation"/>
+  <arg name="object_type"           default="drill"/>
+  <arg name="data_rel_path"         default="$(arg experiment)/validation"/>
+  <arg name="random_seed"           default="0"/>
+
+  <arg name="config_filename"       value="$(arg experiment).yaml"/>
+  <arg name="config_path" value="$(find ll4ma_policy_learning)/config"/>
+
+  <arg name="asus_offset" value="89"/>
+  <!-- <arg name="asus_offset" value="132"/> -->
+
+  <!-- ===================================================================== -->
+
+  <!-- Global rosparams -->
+  <param name="use_reflex"           value="$(arg use_reflex)"/>
+  <param name="use_object"           value="$(arg use_object)"/>
+  <param name="offline_mode"         value="$(arg offline_mode)"/>
+  <param name="experiment_type"      value="$(arg experiment)"/>
+  <param name="active_learning_type" value="$(arg active_learning_type)"/>
+  <param name="object_type"          value="$(arg object_type)"/>
+  <param name="use_transfer_cov"     value="$(arg use_transfer_cov)"/>
+  <param name="use_promp_merging"    value="$(arg use_promp_merging)"/>
+  <param name="use_pandas"           value="$(arg use_pandas)"/>
+
+  <!-- Data interface (pandas) -->
+  <include if="$(arg use_pandas)" file="$(find ll4ma_logger)/launch/pandas_interface.launch">
+    <arg name="data_abs_path" value="$(arg data_abs_path)"/>
+    <arg name="data_rel_path" value="$(arg data_rel_path)"/>
+  </include>
+
+  <!-- GUI -->
+  <group if="$(arg use_gui)">
+    <node name="policy_execution_gui" pkg="ll4ma_policy_learning" type="policy_gui.py" 
+          respawn="false" output="screen">
+      <param name="demo_path" value="$(arg data_abs_path)/$(arg data_rel_path)"/>
+    </node>
+  </group>
+
+  <!-- Joystick demonstration recorder interface -->
+  <include file="$(find ll4ma_policy_learning)/launch/joy_demo_interface.launch" 
+           if="$(arg use_joystick)">
+    <arg name="demo_path" value="$(arg data_abs_path)/$(arg data_rel_path)"/>
+    <arg name="num_bfs" value="$(arg num_bfs)"/>
+  </include>
+
+  <!-- rViz -->
+  <node name="rviz" pkg="rviz" type="rviz" 
+        args="-d $(find ll4ma_logger)/config/review.rviz"/>
+
+  <!-- ProMP policy learner -->
+  <node name="promp_learner" pkg="ll4ma_policy_learning" type="policy_learner.py" 
+        respawn="false" output="screen"/>
+
+  <!-- Optimizer -->
+  <node name="casadi_optimizer" pkg="ll4ma_policy_learning" type="optimizer_node.py" 
+        respawn="false" output="screen"/>
+
+  <!-- ProMP action server -->
+  <node name="task_promp_action_server" pkg="ll4ma_policy_learning" 
+        type="task_promp_action_server.py" respawn="false" output="screen">
+    <param name="config_path" value="$(arg config_path)"/>
+    <param name="config_filename" value="$(arg config_filename)"/>
+    <param name="demo_path" value="$(arg data_abs_path)/$(arg data_rel_path)"/>
+    <param name="num_bfs" value="$(arg num_bfs)"/>
+    <param name="rate" value="$(arg rate)"/>
+    <param name="joint_tolerance" value="$(arg joint_tolerance)"/>
+    <param name="timeout" value="$(arg timeout)"/>
+    <param name="base_frame" value="$(arg base_frame)"/>
+    <param name="random_seed" value="$(arg random_seed)"/>
+  </node>
+
+
+  <!-- Robot/camera calibration -->
+  <include file="$(find robot_aruco_calibration)/launch/publish_calibration_tf.launch">
+    <arg name="use_table_1" value="$(arg use_table_1)"/>
+    <arg name="use_table_2" value="$(arg use_table_2)"/>
+    <arg name="use_table_3" value="$(arg use_table_3)"/>
+  </include>
+
+
+  <!-- ASUS Xtion Pro camera-->
+  <include if="$(arg use_camera)" file="$(find openni2_launch)/launch/openni2.launch">
+    <arg name="depth_registration" value="true"/>
+  </include>
+  <!-- Need to set offset for depth registration to work correctly -->
+  <node if="$(arg use_camera)" pkg="dynamic_reconfigure" type="dynparam" name="dynparam" 
+        args="set /camera/driver z_offset_mm $(arg asus_offset)"/>
+
+
+  <!-- TF pose transformer for relaying poses to topics -->
+  <node name="base_to_ee_tf_relay" pkg="ll4ma_logger" type="tf_relay.py" 
+        respawn="false" output="log">
+    <param name="parent_frame" value="$(arg base_frame)"/>
+    <param name="child_frame" value="$(arg end_effector_frame)"/>
+    <param name="pose_topic" value="/end_effector/pose/base_frame"/>
+  </node>
+  <node name="obj_to_ee_tf_relay" pkg="ll4ma_logger" type="tf_relay.py" 
+        respawn="false" output="log">
+    <param name="parent_frame" value="$(arg object_frame)"/>
+    <param name="child_frame" value="$(arg end_effector_frame)"/>
+    <param name="pose_topic" value="/end_effector/pose/object_frame"/>
+  </node>
+  <node name="base_to_obj_tf_relay" pkg="ll4ma_logger" type="tf_relay.py" 
+        respawn="false" output="log">
+    <param name="parent_frame" value="$(arg base_frame)"/>
+    <param name="child_frame" value="$(arg object_frame)"/>
+    <param name="pose_topic" value="/object/pose"/>
+  </node>
+  <node name="obj_tf_broadcast" pkg="ll4ma_logger" type="obj_tf_broadcast.py" 
+        respawn="false" output="screen">
+    <param name="base_frame" value="$(arg base_frame)"/>
+    <param name="object_frame" value="$(arg object_frame)"/>
+  </node>
+
+  <!-- TODO this is a hack because I couldn't figure out why a TF warning kept popping up.
+       This is to resolve "Detected jump back in time of [...]. Clearing TF buffer." warning. -->
+  <node name="set_log_level_tf1" pkg="rosservice" type="rosservice" 
+        args="call --wait /base_to_ee_tf_relay/set_logger_level rosout error"/>
+  <node name="set_log_level_tf2" pkg="rosservice" type="rosservice" 
+        args="call --wait /base_to_obj_tf_relay/set_logger_level rosout error"/>
+  <node name="set_log_level_tf3" pkg="rosservice" type="rosservice" 
+        args="call --wait /obj_to_ee_tf_relay/set_logger_level rosout error"/>
+
+
+
+  <!-- === VISUALIZATION =================================================== -->
+
+  <!-- ProMP sample visualization -->
+  <node name="promp_visualizer" pkg="ll4ma_policy_learning" type="promp_visualizer.py" 
+        respawn="false" output="screen">
+      <param name="base_frame" value="$(arg base_frame)"/>
+  </node>
+
+  <!-- Joint trajectory visualization (rViz rendered model) -->
+  <include file="$(find ll4ma_trajectory_util)/launch/joint_trajectory_visualizer.launch">
+    <arg name="rate" value="$(arg rate)"/>
+  </include>
+
+  <!-- Pose visualization -->
+  <node name="pose_visualizer" pkg="ll4ma_trajectory_util" type="pose_visualizer.py" 
+        respawn="false" output="screen"/>
+
+  <!-- Table visualzation -->
+  <node name="table_visualizer" pkg="ll4ma_policy_learning" type="table_visualizer.py"
+        respawn="false" output="screen">
+    <param name="config_path" value="$(arg config_path)"/>
+    <param name="config_filename" value="$(arg config_filename)"/>
+    <param name="experiment_type" value="$(arg experiment)"/>
+  </node>
+
+
+  <!-- === OFFLINE MODE ==================================================== -->
+
+  <group if="$(arg offline_mode)">
+    <param name="robot_description" 
+      command="$(find xacro)/xacro '$(find ll4ma_robots_description)/robots/lbr4.robot.xacro' 
+               gazebo:=false 
+               robot_table:=false 
+               robot_name:=$(arg robot_name) 
+               end_effector:=reflex
+		           --inorder"/>
+    <node name="robot_state_publisher" pkg="robot_state_publisher" type="robot_state_publisher">
+      <remap from="/joint_states" to="/lbr4/joint_states"/>
+    </node>
+    <node pkg="joint_state_publisher" type="joint_state_publisher" output="screen" 
+          name="joint_state_publisher">
+      <param name="publish_default_velocities" value="true"/>
+      <param name="publish_default_efforts" value="true"/>
+      <param name="rate" value="100"/>
+      <remap from="/joint_states" to="/lbr4/joint_states"/>
+    </node>
+  </group>
+
+
+
+  <!-- === ONLINE EXECUTION MODE =========================================== -->
+
+  <!-- Joint trajectory action server -->
+  <node name="joint_trajectory_action_server" pkg="ll4ma_trajectory_util" 
+        type="joint_trajectory_action_server.py" respawn="false" output="screen" 
+        unless="$(arg offline_mode)"/>
+
+  <!-- Trajectory smoother (for joint trajectory executions) -->
+  <node name="trajectory_smoothing" pkg="trajectory_smoothing" type="service" 
+        output="screen"/>
+
+  <!-- LL4MA planner -->
+  <include file="$(find ll4ma_planner)/launch/lbr4_ee_planner.launch"
+	   if="$(use_ll4ma_planner)"/>
+
+  <!-- rosbag logger -->
+  <node name="rosbag_recorder" pkg="ll4ma_logger" type="rosbag_recorder.py" 
+        respawn="false" output="screen" unless="$(arg offline_mode)"/>
+
+  <!-- Relay node that aggregates state quantities and publish to single robot state topic -->
+  <node name="$(arg robot_name)_state_relay" pkg="ll4ma_logger" type="robot_state_relay.py" 
+        respawn="false" output="screen" unless="$(arg offline_mode)"/>
+
+  <!-- ReFlex interface for grasping -->
+  <node name="reflex_grasp_interface" pkg="ll4ma_robot_interface" type="reflex_grasp.py" 
+        output="screen" respawn="false" if="$(arg use_reflex)"/>
+
+</launch>

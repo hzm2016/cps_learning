@@ -1,0 +1,9 @@
+trajectory_msgs/JointTrajectory[] joint_trajectories
+ll4ma_trajectory_msgs/TaskTrajectory[]  ee_trajectories
+ll4ma_trajectory_msgs/TaskTrajectory[]  object_trajectories
+int64 num_bfs
+int64 regr_alpha
+---
+ProMPConfigROS config
+float64[]      w       # For single demos when learning weights
+bool           success
