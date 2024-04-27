@@ -25,8 +25,9 @@ from utils import *
 np.set_printoptions(precision=4)     
 
 
+
 class Dataset(object):  
-    def __init__(self, context_dim, para_dim, max_size=int(1e6)):
+    def __init__(self, context_dim, para_dim, max_size=int(1e3)):
         #
         self._context_buf = np.zeros(shape=(max_size, context_dim), dtype=np.float32)  
         self._para_buf = np.zeros(shape=(max_size, para_dim), dtype=np.float32)   
@@ -57,32 +58,42 @@ class Dataset(object):
         return state_info, reward_info      
 
     def sample_latest(self, batch_size):  
-        # index = 
+        return self._context_buf[-batch_size:, :], self._para_buf[-batch_size:, :], self._reward_buf[-batch_size:, :]  
 
-    def save(self, save_dir, n_iter):  
-        save_dir = save_dir + "/dataset"  
-        if not os.path.exists(save_dir):  
-            os.mkdir(save_dir)   
-        data_path = save_dir + "/data_{0}".format(n_iter)
-        np.savez(data_path, context=self._context_buf, para=self._para_buf)   
+    def save(self, save_dir):    
+        if not os.path.exists(save_dir):            
+            os.makedirs(save_dir)       
+        save_dir = save_dir + '/state_reward_pair.npz' 
+        np.savez(save_dir, context=self._context_buf[:self._size, :], para=self._para_buf[:self._size,:], reward=self._reward_buf[:self._size, :])        
 
-    def load(self, data_dir):   
-        self._context_buf, self._para_buf = None, None
-        for i, data_file in enumerate(glob.glob(os.path.join(data_dir, "*.npz"))):
-            size = int(data_file.split("/")[-1].split("_")[-1].split(".")[0])
-            np_file = np.load(data_file)
-            #
-            context_array = np_file['context'][:size, :]
-            para_array = np_file['para'][:size, :]
-            if i == 0:
-                self._context_buf = context_array
-                self._para_buf = para_array    
-            else:
-                self._context_buf = np.append(self._context_buf, context_array, axis=0)
-                self._para_buf = np.append(self._para_buf, para_array, axis=0)
-        #
+    def load(self, data_dir):  
+        self._context_buf, self._para_buf, self._reward_buf = None, None, None
+        np_file = np.load(data_dir + '/state_reward_pair.npz')    
+        
+        self._context_buf = np_file['context']
+        self._para_buf = np_file['para']   
+        self._reward_buf = np_file['reward']    
+        
         self._size  = self._context_buf.shape[0]
         self._ptr = self._size - 1
+
+    # def load(self, data_dir):   
+    #     self._context_buf, self._para_buf, self._reward_buf = None, None, None
+    #     for i, data_file in enumerate(glob.glob(os.path.join(data_dir, "*.npz"))):
+    #         size = int(data_file.split("/")[-1].split("_")[-1].split(".")[0])
+    #         np_file = np.load(data_file)
+    #         #
+    #         context_array = np_file['context'][:size, :]
+    #         para_array = np_file['para'][:size, :]
+    #         if i == 0:
+    #             self._context_buf = context_array
+    #             self._para_buf = para_array    
+    #         else:
+    #             self._context_buf = np.append(self._context_buf, context_array, axis=0)
+    #             self._para_buf = np.append(self._para_buf, para_array, axis=0)
+    #     #
+    #     self._size  = self._context_buf.shape[0]
+    #     self._ptr = self._size - 1
 
 
 # class Actor(Model):
@@ -140,7 +151,8 @@ class CPS(object):
         self.cps_dataset = Dataset(self.context_dim, self.para_dim)    
 
         self.policy_path = cps_para['policy_path'] + '/subject_' + str(cps_para['subject_num']) + '/exp_num_' + str(cps_para['exp_num'])        
-        self.impedance_path = cps_para['impedance_path'] + '/subject_' + str(cps_para['subject_num']) + '/exp_num_' + str(cps_para['exp_num'])        
+        self.impedance_path = cps_para['impedance_path'] + '/subject_' + str(cps_para['subject_num']) + '/exp_num_' + str(cps_para['exp_num'])      
+        self.data_pair_path = cps_para['data_pair_path'] + '/subject_' + str(cps_para['subject_num']) + '/exp_num_' + str(cps_para['exp_num'])     
         
         # Gaussian process regressor with an RBF kernel    
         # kernel = RBF(length_scale=2.0)    
@@ -156,8 +168,9 @@ class CPS(object):
             eps=cps_para['epi']       
         )   
 
-        self.iter_index = 0    
-        self.reward = 0.0   
+        self.iter_index = cps_para['iter_index']     
+        self.gait_index = 0  
+        self.inter_reward = 0.0   
         
         self.beta = cps_para['beta']    
         self.num_sim = cps_para['num_sim']       
@@ -166,7 +179,10 @@ class CPS(object):
 
         self.task_var = None    
         self.para_range = None    
-        self.context_range = cps_para['context_range']       
+        self.context_range = cps_para['context_range']    
+
+        self.batch_num = cps_para['batch_num']       
+        self.batch_reward = np.zeros(self.batch_num)           
 
         #### real context ##### 
         # speed_range=np.array([0.6, 0.8, 0.9, 1.0, 1.1, 1.2, 1.3, 1.4]),   
@@ -175,13 +191,22 @@ class CPS(object):
         # self.context_s = np.array([-8, -4, -2, 0, 2, 4, 8])    
         self.speed_range, self.slop_range = np.array(self.context_range['speed']), np.array(self.context_range['slope'])  
         # print(self.speed_range, self.slop_range)   
-        self.speed_values, self.slop_values = self.generate_all()     
+        self.speed_values, self.slop_values = self.generate_all()   
+
+        ### load previous data ### 
+        self.load_data()  
         
 
-    def push_data(self, context_list=None, para_list=None, reward_list=None):     
-        # reward_list = self.get_reward(context_list=context_list, para_list=-para_list)  
-
+    def push_pair(self, context_list=None, para_list=None, reward_list=None):     
         self.cps_dataset.add(context_list, para_list, reward_list)   
+
+
+    def push_gait(self, state=None, reward=None):     
+        self.batch_reward[self.gait_index%self.batch_num] = reward     
+        self.gait_index += 1 
+        if self.gait_index%self.batch_num == 0:  
+            avg_reward = np.mean(self.batch_reward)  
+            self.push_pair(context_list=state[:self.context_dim], para_list=state[self.context_dim:], reward_list=avg_reward)   
 
 
     def get_reward(self, context_list=None, para_list=None):     
@@ -229,12 +254,16 @@ class CPS(object):
         reps_obs_a, reps_obs_A, reps_obs_sigma = policy_para['arr_0'], policy_para['arr_1'], policy_para['arr_2'] 
         self.reps.set_para(reps_obs_a, reps_obs_A, reps_obs_sigma)   
 
+    def load_data(self,): 
+        ################ load dataset of data pair ################
+        data_pair_path = self.data_pair_path + '/eva_' + str(self.iter_index)   
+        self.cps_dataset.load(data_pair_path)  
+        print("successfully load data !!!")    
+        print("datasize :", self.cps_dataset._size)           
 
-    def update_policy(self, training_num=None):    
+    def update_policy(self, training_num=None):     
         state_list, reward_list = self.cps_dataset.sample_pairs(training_num)      
-        self.gp_model.fit(state_list, reward_list)                 
-        
-        self.iter_index += 1  
+        self.gp_model.fit(state_list, reward_list)                   
 
         ################ for traing with artificial samples ######    
         context_info_sim = self.sample_sim_context(give_seed=self.iter_index)     
@@ -258,7 +287,11 @@ class CPS(object):
         context_list = self.sample_real_context(give_seed=self.iter_index, num_real=self.num_real)       
 
         ################ generate new impeance ####################  
-        self.save_impedance(context_list=context_list)      
+        self.save_impedance(context_list=context_list)     
+
+        ################ save dataset of data pair ################
+        data_pair_path = self.data_pair_path + '/eva_' + str(self.iter_index)       
+        self.cps_dataset.save(data_pair_path)    
 
 
     def update_gp(self, training_num=None):    
@@ -308,13 +341,11 @@ class CPS(object):
         return context_real     
     
 
-    def cal_reward(self, evaluation_num=10):    
-        """ cal reward  """ 
-        avg_reward = 0.0 
-        std_reward = 0.0      
-
-
-        return reward    
+    def cal_reward(self, batch_size=10):    
+        batch_context, batch_para, batch_reward = self.sample_latest(batch_size)    
+        avg_reward = np.mean(batch_reward)   
+        std_reward = np.std(batch_reward)
+        return avg_reward, std_reward      
 
 
     def save_impedance(self, context_list=None):      
@@ -344,153 +375,13 @@ class CPS(object):
         if check_generated_imp(imp_total):  
             print("Save New Parameters in evaluation {}".format(self.iter_index))  
             np.save(self.impedance_path + "/impedance_{}.npy".format(self.iter_index), imp_total)      
-            np.save(self.impedance_path + "/context_{}.npy".format(self.iter_index), context_list)            
+            np.save(self.impedance_path + "/context_{}.npy".format(self.iter_index), context_list)        
 
+        for send_index in range(context_list.shape[0]):    
+            print("Please Enter to continue ...")
+            input()   
+            # publish one impedance # 
 
+            print('Send ' + str(send_index) + ' impedance parameters !!!')   
 
-if __name__ == '__main__':     
-    parser = argparse.ArgumentParser()           
-
-    # //////// mode /////////////  
-    parser.add_argument('--ctl_mode', type=str, default="motion", help='choose mode first !!!!')      
-    parser.add_argument('--bilateral', type=int, default=0, help='choose mode first !!!!')   
-    
-    parser.add_argument('--num', type=int, default=5000, help='choose index first !!!!')     
-    parser.add_argument('--num_epi', type=int, default=1, help='give numn epi first !!!!')            
-    
-    parser.add_argument('--num_initial', type=int, default=20, help='give numn initial first !!!!')       
-    parser.add_argument('--beta', type=float, default=1, help='beta !!!')           
-    parser.add_argument('--num_iters', type=int, default=1, help='give numn initial first !!!!')          
-    parser.add_argument('--num_sim_bo', type=int, default=200, help='give numn initial first !!!!')           
-    parser.add_argument('--num_eva', type=int, default=20, help='numn evaluation !!!!')       
-    parser.add_argument('--num_save', type=int, default=5, help='numn evaluation !!!!')       
-    
-    parser.add_argument('--num_pre', type=int, default=5, help='give numn episodes for preference learning !!!!')   
-    
-    parser.add_argument('--traj_deform', type=int, default=0, help='move to initial point !!!!')      
-    parser.add_argument('--policy_learn', type=int, default=0, help='policy learning or not !!!!')    
-    parser.add_argument('--context_dim', type=int, default=2, help='policy learning or not !!!!')       
-    parser.add_argument('--obs_dim', type=int, default=3, help='policy learning or not !!!!')      
-    parser.add_argument('--para_dim', type=int, default=2, help='policy learning or not !!!!')    
-    parser.add_argument('--rotate_angle', type=float, default=0.0, help='radius of robot motion !!!!')    
-    parser.add_argument('--num_real', type=int, default=10, help='policy learning or not !!!!')       
-    parser.add_argument('--num_sim', type=int, default=2000, help='policy learning or not !!!!')        
-    parser.add_argument('--num_K', type=int, default=10, help='policy learning or not !!!!')       
-    
-    parser.add_argument('--initial_k', type=int, default=0, help='policy learning or not !!!!')   
-    
-    parser.add_argument('--load_policy', type=int, default=0, help='low new policy or not !!!!')          
-    parser.add_argument('--evaluate_policy', type=int, default=1, help='evaluate policy or not !!!!')      
-    parser.add_argument('--load_subject_initial', type=int, default=1, help='evaluate policy or not !!!!')          
-    
-    # //////// basics ///////////        
-    parser.add_argument('--speed', type=int, default=10, help='select from {1, 2, 3}')      
-    
-    # //// path ////////////////      
-    parser.add_argument('--file_name', type=str, default='x_p', help='load reference trajectory !!!')       
-    parser.add_argument('--root_path', type=str, default='./data/tro_data', help='choose index first !!!!')      
-    parser.add_argument('--load_data', type=int, default=0, help='choose index first !!!!')    
-    parser.add_argument('--subject_index', type=int, default=0, help='subject index !!!!')             
-    parser.add_argument('--method_index', type=int, default=1, help='method index !!!!')         
-    parser.add_argument('--training_mode', type=str, default='REPS', help='training index !!!!')        
-    
-    # //// learning /////////////       
-    parser.add_argument('--nb_data', type=int, default=200, help='choose index first !!!!')      
-    parser.add_argument('--N_I', type=int, default=20, help='choose index first !!!!')     
-    parser.add_argument('--nb_samples', type=int, default=5, help='load reference trajectory !!!')       
-    parser.add_argument('--nb_states', type=int, default=25, help='choose index first !!!!')      
-    parser.add_argument('--sample_num', type=int, default=5000, help='choose index first !!!!')      
-    parser.add_argument('--input_dim', type=int, default=1, help='choose index first !!!!')      
-    parser.add_argument('--output_dim', type=int, default=2, help='load reference trajectory !!!')     
-    parser.add_argument('--dim', type=int, default=1, help='via num !!!')     
-    parser.add_argument('--via_num', type=int, default=5, help='via num !!!')     
-    parser.add_argument('--dt', type=float, default=0.01, help='choose mode first !!!!')       
-    parser.add_argument('--lambda_1', type=float, default=0.001, help='lambda_1 !!!')    
-    parser.add_argument('--lambda_2', type=float, default=10.0, help='lambda_2 !!!')      
-    parser.add_argument('--kh', type=float, default=15.0, help='lambda_2 !!!')    
-    parser.add_argument('--nb_dim', type=int, default=1, help='autoregression !!!')     
-    parser.add_argument('--center_index', type=int, default=110, help='autoregression !!!')     
-    parser.add_argument('--beta_t', type=float, default=0.3, help='beta !!!')       
-    
-    parser.add_argument('--max_iter', type=int, default=200, help='maximal iteration !!!')        
-    parser.add_argument('--max_F', type=float, default=1.8, help='maximal iteration !!!')        
-    
-    parser.add_argument('--T', type=float, default=5, help='choose index first !!!!')      
-    parser.add_argument('--T_s', type=float, default=0.001, help='load reference trajectory !!!')            
-    
-    parser.add_argument('--prior_flag', type=str, default='tele', help='choose index first !!!!')    
-    parser.add_argument('--initial_data_name', type=str, default='fixed_initial_second', help='initial data name !!!!')    
-    parser.add_argument('--data_name', type=str, default='episode_', help='data name !!!!')    
-    parser.add_argument('--resample', type=int, default=25, help='resample index !!!')    
-    
-    parser.add_argument("--state_space_grid_width", type=int, default=50, help="state space grid width!!!")
-    parser.add_argument("--ucb_sample_num", type=int, default=10, help="new ucb generated sample!!!")
-    parser.add_argument("--eps", type=int, default=3.5, help="")
-    parser.add_argument("--training_data_path", type=str, default="/media/yuxuan/BackUp/HPS_Data/Debug_Ba/")
-    parser.add_argument("--reps_para_path", type=str, default="/media/yuxuan/BackUp/HPS_Data/Debug_REPS/")
-    
-    args = parser.parse_args()    
-    policy_path = current_dir + '/policy_para'    
-
-
-    cps_para = {
-        'context_dim': 2, 
-        'para_dim': 2, 
-        'policy_type': 'reps', 
-        'epi' : 0.1, 
-        'beta' : 1.0, 
-        'num_sim' : 2000,  
-        'num_real' : 10,  
-        'num_space' : 200,  
-        'policy_path': '/Users/zhimin/Desktop/2-code/HPS_Perception/hps_control/scripts/cps_learning/policy_para',  
-        'impedance_path': '/Users/zhimin/Desktop/2-code/HPS_Perception/hps_control/scripts/cps_learning/impedance_para',   
-        'subject_num': 0,  
-        'exp_num': 0, 
-        'context_range': {'speed': [0.8, 1.0, 1.1, 1.2, 1.3, 1.4], 'slope' : [-8, -4, -2, 0, 2, 4, 8]}   
-    }
-    context_range = {'speed': [0.8, 1.0, 1.1, 1.2, 1.3, 1.4], 'slope' : [-8, -4, -2, 0, 2, 4, 8]}     
-
-    cps_policy = CPS(cps_para=cps_para)    
-
-    # context_dim=args.context_dim, para_dim=args.para_dim, policy_type='reps', epi=0.1, 
-    # policy_path=policy_path, num_sim=2000, num_space=200, context_range=context_range  
-    
-    # policy_path = '/Users/zhimin/Desktop/2-code/HPS_Perception/hps_control/data/state_info_real420'  
-    # for index in range(1, 10):   
-    #     state_action_pair = np.load(policy_path + '/e' + str(index) + '/' + 'state_info_real.npy')    
-    #     print(state_action_pair.shape)    
-
-    
-    # policy_path = '/Users/zhimin/Desktop/2-code/HPS_Perception/hps_control/data/data420'   
-    # for index in range(1, 10):   
-    #     path = policy_path + '/e' + str(index) + '/pair'  
-    #     state_list = glob.glob(path + '/state_*.npy') 
-    #     reward_list = glob.glob(path + '/reward_*.npy')    
-    #     data_state = []  
-    #     data_reward = []    
-    #     for state_path, reward_path in zip(state_list, reward_list):  
-    #         state_list = np.load(state_path)  
-    #         reward_list = np.load(reward_path)  
-    #         # print(state_list)  
-    #         # print(reward_list)   
-    #         data_state.append(state_list) 
-    #         data_reward.append(reward_list)   
-
-    #         cps_policy.push_data(context_list=state_list[:2], para_list=state_list[2:], reward_list=reward_list)    
-        
-    #     # data_state = np.array(data_state)  
-    #     # data_reward = np.array(data_reward)  
-    #     # # print(data_state.shape, data_reward.shape) 
-    #     # cps_policy.push_data(context_list=data_state[:, :2], para_list=data_state[:, 2:4], reward_list=data_reward)   
-
-    #     # state_action_pair = np.load(policy_path + '/e' + str(index) + '/pair/' + 'state_' + str(state_index) + '.npy')     
-    #     # reward_pair = np.load(policy_path + '/e' + str(index) + '/pair/' + 'reward_' + str(state_index) + '.npy')   
-
-    # print("size of dataset :", cps_policy.cps_dataset._size)       
-
-    # score = cps_policy.update_gp(training_num=80)  
-    # print("score :", score)     
-
-    # cps_policy.update_policy(training_num=80)  
-
-    # print(range(10)) 
+        return imp_total  
