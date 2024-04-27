@@ -290,7 +290,7 @@ class CPS(object):
         self.save_impedance(context_list=context_list)     
 
         ################ save dataset of data pair ################
-        data_pair_path = self.data_pair_path + '/eva_' + str(self.iter_index)       
+        data_pair_path = self.data_pair_path + '/eva_' + str(self.iter_index+1)         
         self.cps_dataset.save(data_pair_path)    
 
 
@@ -331,7 +331,6 @@ class CPS(object):
         V, S = V.flatten(), S.flatten()  
 
         idx_chosen = np.random.randint(0, V.shape[0], size=(num_real,))   
-        # print(idx_chosen)  
         context_real[:, 0] = V[idx_chosen]  
         context_real[:, 1] = S[idx_chosen]   
 
@@ -368,7 +367,7 @@ class CPS(object):
         imp_total[:, 1] = new_kp1[:]
         imp_total[:, 2] = new_kp2[:]    
 
-        save_impedance_path = self.impedance_path + '/eva_' + str(self.iter_index)     
+        save_impedance_path = self.impedance_path + '/eva_' + str(self.iter_index+1)       
         if not os.path.exists(save_impedance_path):           
             os.makedirs(save_impedance_path)         
         
